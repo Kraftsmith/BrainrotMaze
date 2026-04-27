@@ -261,6 +261,9 @@ task.spawn(function()
 			end
 			if income > 0 then
 				coins.Value = coins.Value + income
+				print(("[BrainrotDelivery] %s +%d coins/sec (total: %d)"):format(
+					player.Name, income, coins.Value
+				))
 			end
 		end
 	end
