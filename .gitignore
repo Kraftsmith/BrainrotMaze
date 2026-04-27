@@ -1,0 +1,31 @@
+# Roblox Studio backups / locks
+*.rbxl.lock
+*.rbxlx.lock
+*.RBXL.bak
+*.rbxm.lock
+
+# Rojo build output / sourcemap
+sourcemap.json
+build/
+*.rbxlx.tmp
+
+# Claude Code session data (memory is in user dir)
+.claude/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (in case we add JS tooling later)
+node_modules/
+
+# Rust build (if anyone builds tools locally)
+target/
