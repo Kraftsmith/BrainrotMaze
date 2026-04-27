@@ -66,7 +66,14 @@ local function bindTrap(trap)
 	local period = trap:GetAttribute("Period") or 3
 	local activeDur = trap:GetAttribute("ActiveDuration") or 1
 	local tier = getTier(trap)
-	local effectivePeriod = period / (1 + math.max(0, tier - 2) * 0.2)
+	local effectivePeriod
+	if tier <= 1 then
+		-- Tutorial maze: 50% slower so player has time to learn the pattern
+		effectivePeriod = period * 1.5
+	else
+		-- Tier 2 = baseline, +20% speedup per tier above
+		effectivePeriod = period / (1 + (tier - 2) * 0.2)
+	end
 
 	for _, d in trap:GetDescendants() do
 		if d:IsA("BasePart") and CollectionService:HasTag(d, HITBOX_TAG) then
