@@ -4,9 +4,18 @@
 
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerData = require(ServerStorage:WaitForChild("PlayerData"))
-local UpgradeConfig = require(ServerStorage:WaitForChild("UpgradeConfig"))
+local UpgradeConfig = require(ReplicatedStorage:WaitForChild("UpgradeConfig"))
+
+-- Lazy-create RemoteEvent for client purchase requests
+local purchaseEvent = ReplicatedStorage:FindFirstChild("PurchaseUpgrade")
+if not purchaseEvent then
+	purchaseEvent = Instance.new("RemoteEvent")
+	purchaseEvent.Name = "PurchaseUpgrade"
+	purchaseEvent.Parent = ReplicatedStorage
+end
 
 local BASE_NAMES = {"bazapl1", "bazapl2", "bazapl3", "bazapl4"}
 
@@ -42,9 +51,17 @@ local function applyBaseCapacity(player)
 	base:SetAttribute("Capacity", cap)
 end
 
+-- Sync PlayerData levels to player attributes (so client UI sees them)
+local function syncAttributes(player)
+	player:SetAttribute("speedLvl", PlayerData.getValue(player, "speedLvl"))
+	player:SetAttribute("carryLvl", PlayerData.getValue(player, "carryLvl"))
+	player:SetAttribute("baseLvl", PlayerData.getValue(player, "baseLvl"))
+end
+
 local function applyAll(player)
 	applySpeed(player)
 	applyBaseCapacity(player)
+	syncAttributes(player)
 end
 
 ------------------------------------------------------------------------
@@ -93,6 +110,8 @@ local function setupCharacter(player, char)
 end
 
 local function setupPlayer(player)
+	syncAttributes(player) -- initial set so client UI has values immediately
+
 	-- Apply speed to current character if exists
 	if player.Character then
 		setupCharacter(player, player.Character)
@@ -135,4 +154,16 @@ end
 Players.PlayerAdded:Connect(bindChat)
 for _, p in Players:GetPlayers() do bindChat(p) end
 
-print("[UpgradeService] ready")
+------------------------------------------------------------------------
+-- Client purchase requests
+------------------------------------------------------------------------
+
+purchaseEvent.OnServerEvent:Connect(function(player, track)
+	if type(track) ~= "string" then return end
+	track = track:lower()
+	if track == "base" then track = "baseCap" end
+	if track ~= "speed" and track ~= "carry" and track ~= "baseCap" then return end
+	tryUpgrade(player, track)
+end)
+
+print("[UpgradeService] ready (chat /upgrade <track> + Shop UI via PurchaseUpgrade RemoteEvent)")

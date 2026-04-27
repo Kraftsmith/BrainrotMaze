@@ -12,7 +12,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local BrainrotState = require(ServerStorage:WaitForChild("BrainrotState"))
 local Util = require(ServerStorage:WaitForChild("Util"))
 local PlayerData = require(ServerStorage:WaitForChild("PlayerData"))
-local UpgradeConfig = require(ServerStorage:WaitForChild("UpgradeConfig"))
+local UpgradeConfig = require(ReplicatedStorage:WaitForChild("UpgradeConfig"))
 
 local BRAINROT_TAG = "Brainrot"
 local CARRY_OFFSET = 3       -- studs above the head for first brainrot
