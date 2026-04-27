@@ -29,14 +29,20 @@ local lastDelivery = {}
 ------------------------------------------------------------------------
 
 local function setupLeaderstats(player)
-	if player:FindFirstChild("leaderstats") then return end
-	local ls = Instance.new("Folder")
-	ls.Name = "leaderstats"
-	local coins = Instance.new("IntValue")
-	coins.Name = "Coins"
-	coins.Value = 0
-	coins.Parent = ls
-	ls.Parent = player
+	-- Some other script may have already created leaderstats Folder without Coins.
+	-- Handle Folder and Coins independently.
+	local ls = player:FindFirstChild("leaderstats")
+	if not ls then
+		ls = Instance.new("Folder")
+		ls.Name = "leaderstats"
+		ls.Parent = player
+	end
+	if not ls:FindFirstChild("Coins") then
+		local coins = Instance.new("IntValue")
+		coins.Name = "Coins"
+		coins.Value = 0
+		coins.Parent = ls
+	end
 end
 
 Players.PlayerAdded:Connect(setupLeaderstats)
@@ -241,6 +247,9 @@ task.spawn(function()
 	while true do
 		task.wait(1)
 		for _, player in Players:GetPlayers() do
+			-- Belt-and-suspenders: ensure leaderstats.Coins exists before each tick
+			-- (other scripts may have created leaderstats Folder without Coins).
+			setupLeaderstats(player)
 			local ls = player:FindFirstChild("leaderstats")
 			local coins = ls and ls:FindFirstChild("Coins")
 			if not coins then
