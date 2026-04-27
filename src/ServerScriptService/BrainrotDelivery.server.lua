@@ -243,19 +243,31 @@ task.spawn(function()
 		for _, player in Players:GetPlayers() do
 			local ls = player:FindFirstChild("leaderstats")
 			local coins = ls and ls:FindFirstChild("Coins")
-			if not coins then continue end
+			if not coins then
+				print(("[BrainrotDelivery DEBUG] %s no leaderstats.Coins"):format(player.Name))
+				continue
+			end
 
 			local income = 0
+			local debugInfo = {}
 			for _, baseName in BASE_NAMES do
 				local base = workspace:FindFirstChild(baseName)
-				if base and base:GetAttribute("Owner") == player.Name then
-					local list = placed[base] or {}
-					for _, m in list do
-						if m and m.Parent == base then
-							local brIncome = BrainrotConfig.getIncome(m:GetAttribute("Rarity"))
-							income += brIncome
-							task.spawn(showIncomeFloat, m, brIncome)
-						end
+				if not base then
+					table.insert(debugInfo, baseName .. ":missing")
+					continue
+				end
+				local owner = base:GetAttribute("Owner")
+				if owner ~= player.Name then
+					table.insert(debugInfo, ("%s:owner=%s"):format(baseName, tostring(owner)))
+					continue
+				end
+				local list = placed[base] or {}
+				table.insert(debugInfo, ("%s:owned,list=%d"):format(baseName, #list))
+				for _, m in list do
+					if m and m.Parent == base then
+						local brIncome = BrainrotConfig.getIncome(m:GetAttribute("Rarity"))
+						income += brIncome
+						task.spawn(showIncomeFloat, m, brIncome)
 					end
 				end
 			end
@@ -263,6 +275,10 @@ task.spawn(function()
 				coins.Value = coins.Value + income
 				print(("[BrainrotDelivery] %s +%d coins/sec (total: %d)"):format(
 					player.Name, income, coins.Value
+				))
+			else
+				print(("[BrainrotDelivery DEBUG] %s tick income=0 | %s"):format(
+					player.Name, table.concat(debugInfo, " | ")
 				))
 			end
 		end
