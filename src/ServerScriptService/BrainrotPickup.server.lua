@@ -11,12 +11,18 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local BrainrotState = require(ServerStorage:WaitForChild("BrainrotState"))
 local Util = require(ServerStorage:WaitForChild("Util"))
+local PlayerData = require(ServerStorage:WaitForChild("PlayerData"))
+local UpgradeConfig = require(ServerStorage:WaitForChild("UpgradeConfig"))
 
 local BRAINROT_TAG = "Brainrot"
 local CARRY_OFFSET = 3       -- studs above the head for first brainrot
 local STACK_SPACING = 3      -- studs between stacked brainrots
 local DROP_FORWARD = 4       -- studs in front of player
-local MAX_CARRY = 2
+
+local function getMaxCarry(player)
+	local lvl = PlayerData.getValue(player, "carryLvl")
+	return UpgradeConfig.getEffect("carry", lvl) or 1
+end
 
 local dropEvent = ReplicatedStorage:FindFirstChild("DropBrainrot")
 if not dropEvent then
@@ -83,7 +89,7 @@ local function setPromptsEnabled(model, enabled)
 end
 
 local function pickup(player, model)
-	if BrainrotState.count(player) >= MAX_CARRY then return end
+	if BrainrotState.count(player) >= getMaxCarry(player) then return end
 	if not model or not model.Parent then return end
 	if not CollectionService:HasTag(model, BRAINROT_TAG) then return end
 
@@ -245,4 +251,4 @@ end)
 local trapHitEvent = brainrotEvents:WaitForChild("TrapHit")
 trapHitEvent.Event:Connect(dropAllCarried)
 
-print("[BrainrotPickup] ready (max carry = " .. MAX_CARRY .. ")")
+print("[BrainrotPickup] ready (carry capacity now per-player from PlayerData)")
