@@ -43,6 +43,47 @@ Players.PlayerAdded:Connect(setupLeaderstats)
 for _, p in Players:GetPlayers() do setupLeaderstats(p) end
 
 ------------------------------------------------------------------------
+-- Floating "+N" income visual above each placed brainrot per tick
+------------------------------------------------------------------------
+
+local TweenService = game:GetService("TweenService")
+
+local function showIncomeFloat(model, amount)
+	if amount <= 0 then return end
+	local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	if not primary then return end
+
+	local bg = Instance.new("BillboardGui")
+	bg.Name = "IncomeFloat"
+	bg.Size = UDim2.new(0, 80, 0, 30)
+	bg.StudsOffset = Vector3.new(0, 3, 0)
+	bg.AlwaysOnTop = true
+	bg.Adornee = primary
+	bg.Parent = primary
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = ("+%d 💰"):format(amount)
+	label.TextColor3 = Color3.fromRGB(255, 215, 60)
+	label.TextStrokeColor3 = Color3.fromRGB(80, 50, 0)
+	label.TextStrokeTransparency = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.Parent = bg
+
+	-- Float upward + fade out over 1.2s
+	local info = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(bg, info, {StudsOffset = Vector3.new(0, 7, 0)}):Play()
+	local fade = TweenService:Create(label, info, {
+		TextTransparency = 1,
+		TextStrokeTransparency = 1,
+	})
+	fade:Play()
+	fade.Completed:Connect(function() bg:Destroy() end)
+end
+
+------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
 
@@ -211,7 +252,9 @@ task.spawn(function()
 					local list = placed[base] or {}
 					for _, m in list do
 						if m and m.Parent == base then
-							income += BrainrotConfig.getIncome(m:GetAttribute("Rarity"))
+							local brIncome = BrainrotConfig.getIncome(m:GetAttribute("Rarity"))
+							income += brIncome
+							task.spawn(showIncomeFloat, m, brIncome)
 						end
 					end
 				end
