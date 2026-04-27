@@ -19,7 +19,6 @@ completedColumns:
 - [templates-registry-с-валидацией](tasks/templates-registry-с-валидацией.md)
 - [Заменить-os-clock-на-server-time](tasks/Заменить-os-clock-на-server-time.md)
 - [data-store-персистентность](tasks/data-store-персистентность.md)
-- [shop-ui-и-покупки](tasks/shop-ui-и-покупки.md)
 - [Разблокировка-лабиринтов](tasks/Разблокировка-лабиринтов.md)
 - [Импорт-недостающих-моделей](tasks/Импорт-недостающих-моделей.md)
 
@@ -33,6 +32,7 @@ completedColumns:
 - [Ловушки-в-лабиринтах](tasks/Ловушки-в-лабиринтах.md)
 - [Явное-событие-brainrot-picked-up](tasks/Явное-событие-brainrot-picked-up.md)
 - [upgrade-system](tasks/upgrade-system.md)
+- [shop-ui-и-покупки](tasks/shop-ui-и-покупки.md)
 
 ## Done
 
