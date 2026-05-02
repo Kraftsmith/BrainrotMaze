@@ -18,10 +18,19 @@
 |---|---|---|---|
 | spawn platform 1 | 96   | Common (1) | Common |
 | spawn platform 2 | -300 | Rare (2)   | (нет Rare-моделей пока — fallback Common) |
-| spawn platform | -742  | Epic (3)   | (нет Epic-моделей — Common + Legendary mix) |
-| spawn platform | -1373 | Legendary (4) | Legendary |
-| spawn platform | -2244 | Mythic (5) | Mythic |
-| spawn platform | -3144 | Gogly (6)  | (нет Gogly — fallback Mythic) |
+| spawn platform 3 | -742  | Epic (3)   | (нет Epic-моделей — Common + Legendary mix) |
+| spawn platform 4 | -1373 | Legendary (4) | Legendary |
+| spawn platform 5 | -2244 | Mythic (5) | Mythic |
+| spawn platform 6 | -3144 | Gogly (6)  | (нет Gogly — fallback Mythic) |
+
+## Схема имён в Workspace
+
+Каждая платформа лежит в `Workspace.Model.spawn platform N` (N = 1..6). Внутри неё `Folder` `SpawnPads` с пятью пэдами `pad_01..pad_05`. Адресовать в спеках можно так:
+
+- `spawn platform 3` — вся платформа (3-й тир, Epic)
+- `spawn platform 3 / pad_02` — конкретный пэд
+
+Нумерация `pad_01..pad_05` идёт слева направо по X (при равном X — по Z), стабильна между запусками.
 
 ⚠️ Дыры по тирам Rare/Epic/Gogly — сын импортирует недостающие 12 моделей в [Импорт-недостающих-моделей](../.kanbn/tasks/Импорт-недостающих-моделей.md). После — поправлю rarities на платформах.
 

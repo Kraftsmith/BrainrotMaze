@@ -6,17 +6,49 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local UpgradeConfig = require(ReplicatedStorage:WaitForChild("UpgradeConfig"))
 local purchaseEvent = ReplicatedStorage:WaitForChild("PurchaseUpgrade")
 
 local player = Players.LocalPlayer
 
+-- formatRow(lvl, maxLvl, currentValue, nextValue, cost) -> (detailText, buyBtnText)
+-- Per-track display. baseCap отрисовывается как "купи слот", а не "купи уровень" —
+-- семантика трека = +1 слот за покупку, см. Game Design/Base.md.
+local function defaultFormat(_, _, currentValue, nextValue, cost, desc)
+	return ("%s\nlvl: %s → %s"):format(desc, tostring(currentValue), tostring(nextValue)),
+		("Buy\n💰 %d"):format(cost)
+end
+
+local function maxFormat(lvl, maxLvl, currentValue, _, _, desc)
+	return ("%s\nLevel %d/%d (max) · Value: %s"):format(desc, lvl, maxLvl, tostring(currentValue)),
+		"MAX"
+end
+
+local function slotsFormat(_, _, currentValue, _, cost, _)
+	return ("Slots: %d / 30"):format(currentValue),
+		("Buy +1 slot\n💰 %d"):format(cost)
+end
+
+local function slotsMaxFormat(_, _, currentValue, _, _, _)
+	return ("Slots: %d / 30 (max)"):format(currentValue),
+		"MAX"
+end
+
 local TRACKS = {
-	{key = "speed",   levelAttr = "speedLvl", icon = "🏃", name = "Скорость"},
-	{key = "carry",   levelAttr = "carryLvl", icon = "📦", name = "Переноска"},
-	{key = "baseCap", levelAttr = "baseLvl",  icon = "🏠", name = "База"},
+	{key = "speed",   levelAttr = "speedLvl", icon = "🏃", name = "Speed",     desc = "How fast your character moves",
+		format = defaultFormat, maxFormat = maxFormat},
+	{key = "carry",   levelAttr = "carryLvl", icon = "📦", name = "Max Carry", desc = "Brainrots you can carry at once",
+		format = defaultFormat, maxFormat = maxFormat},
+	{key = "baseCap", levelAttr = "baseLvl",  icon = "🏠", name = "Base Slots", desc = "+1 placement slot on your base",
+		format = slotsFormat, maxFormat = slotsMaxFormat},
 }
+
+-- VIP GamePass — должен совпадать с VipService.VIP_GAMEPASS_ID на сервере.
+-- TODO: заменить на реальный ID из Roblox Creator Hub.
+local VIP_GAMEPASS_ID = 0
+local VIP_PRICE_ROBUX = 67
 
 ------------------------------------------------------------------------
 -- UI construction
@@ -37,7 +69,7 @@ toggleBtn.BorderSizePixel = 0
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextSize = 18
-toggleBtn.Text = "🛒 Магазин [B]"
+toggleBtn.Text = "🛒 Shop [B]"
 toggleBtn.Parent = screenGui
 
 local toggleCorner = Instance.new("UICorner")
@@ -47,8 +79,8 @@ toggleCorner.Parent = toggleBtn
 -- Main shop frame
 local frame = Instance.new("Frame")
 frame.Name = "ShopFrame"
-frame.Size = UDim2.new(0, 420, 0, 380)
-frame.Position = UDim2.new(0.5, -210, 0.5, -190)
+frame.Size = UDim2.new(0, 420, 0, 470)
+frame.Position = UDim2.new(0.5, -210, 0.5, -235)
 frame.BackgroundColor3 = Color3.fromRGB(28, 30, 40)
 frame.BorderSizePixel = 0
 frame.Visible = false
@@ -89,7 +121,7 @@ title.BackgroundTransparency = 1
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 22
-title.Text = "🛒 МАГАЗИН АПГРЕЙДОВ"
+title.Text = "🛒 UPGRADE SHOP"
 title.Parent = header
 
 local closeBtn = Instance.new("TextButton")
@@ -193,6 +225,76 @@ for i, track in TRACKS do
 end
 
 ------------------------------------------------------------------------
+-- VIP Base row (Robux GamePass — отдельная логика, не часть TRACKS)
+------------------------------------------------------------------------
+
+local vipRow = Instance.new("Frame")
+vipRow.Name = "vipBase"
+vipRow.LayoutOrder = 99 -- последний
+vipRow.Size = UDim2.new(1, 0, 0, 80)
+vipRow.BackgroundColor3 = Color3.fromRGB(60, 50, 30)
+vipRow.BorderSizePixel = 0
+vipRow.Parent = itemsContainer
+
+local vipCorner = Instance.new("UICorner")
+vipCorner.CornerRadius = UDim.new(0, 6)
+vipCorner.Parent = vipRow
+
+local vipStroke = Instance.new("UIStroke")
+vipStroke.Color = Color3.fromRGB(255, 215, 60)
+vipStroke.Thickness = 2
+vipStroke.Parent = vipRow
+
+local vipName = Instance.new("TextLabel")
+vipName.Size = UDim2.new(0.55, -10, 0, 28)
+vipName.Position = UDim2.new(0, 12, 0, 8)
+vipName.BackgroundTransparency = 1
+vipName.TextColor3 = Color3.fromRGB(255, 215, 60)
+vipName.Font = Enum.Font.GothamBold
+vipName.TextSize = 17
+vipName.TextXAlignment = Enum.TextXAlignment.Left
+vipName.Text = "👑  VIP Base"
+vipName.Parent = vipRow
+
+local vipDetail = Instance.new("TextLabel")
+vipDetail.Size = UDim2.new(0.55, -10, 0, 36)
+vipDetail.Position = UDim2.new(0, 12, 0, 38)
+vipDetail.BackgroundTransparency = 1
+vipDetail.TextColor3 = Color3.fromRGB(220, 200, 150)
+vipDetail.Font = Enum.Font.Gotham
+vipDetail.TextSize = 12
+vipDetail.TextXAlignment = Enum.TextXAlignment.Left
+vipDetail.TextYAlignment = Enum.TextYAlignment.Top
+vipDetail.TextWrapped = true
+vipDetail.Text = "Custom base visual + ×2 income from all brainrots"
+vipDetail.Parent = vipRow
+
+local vipBtn = Instance.new("TextButton")
+vipBtn.Name = "Buy"
+vipBtn.Size = UDim2.new(0.4, -10, 0, 60)
+vipBtn.Position = UDim2.new(0.6, 0, 0.5, -30)
+vipBtn.BackgroundColor3 = Color3.fromRGB(220, 170, 40)
+vipBtn.BorderSizePixel = 0
+vipBtn.TextColor3 = Color3.fromRGB(40, 30, 10)
+vipBtn.Font = Enum.Font.GothamBold
+vipBtn.TextSize = 14
+vipBtn.Text = "..."
+vipBtn.Parent = vipRow
+
+local vipBtnCorner = Instance.new("UICorner")
+vipBtnCorner.CornerRadius = UDim.new(0, 5)
+vipBtnCorner.Parent = vipBtn
+
+vipBtn.MouseButton1Click:Connect(function()
+	if player:GetAttribute("VipBase") then return end -- уже куплено
+	if VIP_GAMEPASS_ID <= 0 then
+		warn("[ShopClient] VIP_GAMEPASS_ID не настроен — обнови константу после создания GamePass")
+		return
+	end
+	MarketplaceService:PromptGamePassPurchase(player, VIP_GAMEPASS_ID)
+end)
+
+------------------------------------------------------------------------
 -- Refresh
 ------------------------------------------------------------------------
 
@@ -211,17 +313,16 @@ local function refresh()
 		local maxLvl = UpgradeConfig.getMaxLevel(item.track.key)
 		local currentValue = UpgradeConfig.getEffect(item.track.key, lvl)
 
+		local desc = item.track.desc or ""
 		if lvl >= maxLvl then
-			item.detail.Text = string.format("Уровень %d/%d (макс)\nЗначение: %s", lvl, maxLvl, tostring(currentValue))
-			item.btn.Text = "МАКС"
+			item.detail.Text, item.btn.Text = item.track.maxFormat(lvl, maxLvl, currentValue, nil, nil, desc)
 			item.btn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
 			item.btn.AutoButtonColor = false
 			item.btn.Active = false
 		else
 			local nextValue = UpgradeConfig.getEffect(item.track.key, lvl + 1)
 			local cost = UpgradeConfig.getCost(item.track.key, lvl + 1)
-			item.detail.Text = string.format("lvl %d → %d\n%s → %s", lvl, lvl + 1, tostring(currentValue), tostring(nextValue))
-			item.btn.Text = string.format("Купить\n💰 %d", cost)
+			item.detail.Text, item.btn.Text = item.track.format(lvl, maxLvl, currentValue, nextValue, cost, desc)
 			item.btn.Active = true
 			if coinsValue >= cost then
 				item.btn.BackgroundColor3 = Color3.fromRGB(80, 200, 100)
@@ -231,6 +332,19 @@ local function refresh()
 				item.btn.AutoButtonColor = false
 			end
 		end
+	end
+
+	-- VIP row
+	if player:GetAttribute("VipBase") then
+		vipBtn.Text = "✓ Active"
+		vipBtn.BackgroundColor3 = Color3.fromRGB(140, 110, 30)
+		vipBtn.AutoButtonColor = false
+		vipBtn.Active = false
+	else
+		vipBtn.Text = string.format("Buy\nR$ %d", VIP_PRICE_ROBUX)
+		vipBtn.BackgroundColor3 = Color3.fromRGB(220, 170, 40)
+		vipBtn.AutoButtonColor = true
+		vipBtn.Active = true
 	end
 end
 
@@ -277,5 +391,10 @@ for _, t in TRACKS do
 		if frame.Visible then refresh() end
 	end)
 end
+
+-- VIP attribute changes (после покупки GamePass или /vip on|off)
+player:GetAttributeChangedSignal("VipBase"):Connect(function()
+	if frame.Visible then refresh() end
+end)
 
 print("[ShopClient] ready (toggle: button or [B])")

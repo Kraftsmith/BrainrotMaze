@@ -1,58 +1,23 @@
 -- BrainrotDelivery (Script in ServerScriptService)
--- Player carrying a brainrot touches their own base -> brainrot is placed on the base.
--- Placed brainrots generate income per second (Rarity → income from BrainrotConfig).
+-- Что осталось здесь: rehydration placed-брейнротов из SaveService (через тег PlacedBrainrot)
+-- + income tick. Сама механика сдачи (E на базе → слот) — в BrainrotPlacement.lua,
+-- триггер E-handler — в BrainrotPickup.server.lua.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 
-local BrainrotState = require(ServerStorage:WaitForChild("BrainrotState"))
 local BrainrotConfig = require(ReplicatedStorage:WaitForChild("BrainrotConfig"))
-local Util = require(ServerStorage:WaitForChild("Util"))
+local PlayerData = require(ServerStorage:WaitForChild("PlayerData"))
+local BaseSlots = require(ServerStorage:WaitForChild("BaseSlots"))
 
-local brainrotEvents = ServerStorage:WaitForChild("BrainrotEvents")
-local evtPlaced = brainrotEvents:WaitForChild("Placed")
-
-local BASE_NAMES = {"bazapl1", "bazapl2", "bazapl3", "bazapl4"}
-local DEFAULT_CAPACITY = 4
 local PLACED_TAG = "PlacedBrainrot"
-local DELIVERY_DEBOUNCE = 0.5
-
--- per-base placed brainrots: [base] = { Model, Model, ... }
-local placed = {}
--- per-player debounce timer
-local lastDelivery = {}
-
-------------------------------------------------------------------------
--- leaderstats setup
-------------------------------------------------------------------------
-
-local function setupLeaderstats(player)
-	-- Some other script may have already created leaderstats Folder without Coins.
-	-- Handle Folder and Coins independently.
-	local ls = player:FindFirstChild("leaderstats")
-	if not ls then
-		ls = Instance.new("Folder")
-		ls.Name = "leaderstats"
-		ls.Parent = player
-	end
-	if not ls:FindFirstChild("Coins") then
-		local coins = Instance.new("IntValue")
-		coins.Name = "Coins"
-		coins.Value = 0
-		coins.Parent = ls
-	end
-end
-
-Players.PlayerAdded:Connect(setupLeaderstats)
-for _, p in Players:GetPlayers() do setupLeaderstats(p) end
 
 ------------------------------------------------------------------------
 -- Floating "+N" income visual above each placed brainrot per tick
 ------------------------------------------------------------------------
-
-local TweenService = game:GetService("TweenService")
 
 local function showIncomeFloat(model, amount)
 	if amount <= 0 then return end
@@ -78,7 +43,6 @@ local function showIncomeFloat(model, amount)
 	label.TextScaled = true
 	label.Parent = bg
 
-	-- Float upward + fade out over 1.2s
 	local info = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	TweenService:Create(bg, info, {StudsOffset = Vector3.new(0, 7, 0)}):Play()
 	local fade = TweenService:Create(label, info, {
@@ -90,154 +54,46 @@ local function showIncomeFloat(model, amount)
 end
 
 ------------------------------------------------------------------------
--- Helpers
+-- Auto-registration: брейнроты с тегом PlacedBrainrot, появившиеся не через tryPlaceRandom
+-- (например, рехидратированные SaveService после загрузки профиля), попадают в PlayerData
+-- через сигнал. Дедупликация — addPlacedIfNew + table.find на старте.
 ------------------------------------------------------------------------
 
-local function getOwnerPlayer(base)
-	local ownerName = base:GetAttribute("Owner")
-	if not ownerName or ownerName == "" then return nil end
-	return Players:FindFirstChild(ownerName)
-end
+local function tryRegisterPlaced(model)
+	if not model:IsA("Model") then return end
+	local placedBy = model:GetAttribute("PlacedBy")
+	if not placedBy then return end
+	local player = Players:FindFirstChild(placedBy)
+	if not player then return end -- хозяин не в игре — пропускаем, при возврате SaveService рехидратирует
+	local baseName = model:GetAttribute("PlacedOnBase")
+	local base = baseName and workspace:FindFirstChild(baseName)
+	if not base then return end
 
-local function getCapacity(base)
-	return base:GetAttribute("Capacity") or DEFAULT_CAPACITY
-end
+	local existing = PlayerData.getPlaced(player)
+	if table.find(existing, model) then return end
 
-local function placedCount(base)
-	local list = placed[base]
-	if not list then return 0 end
-	-- prune destroyed entries lazily
-	local alive = {}
-	for _, m in list do
-		if m and m.Parent == base then table.insert(alive, m) end
-	end
-	placed[base] = alive
-	return #alive
-end
-
-local function randomPositionInBase(base, model)
-	local _, baseSize = base:GetBoundingBox()
-	local cf = base:GetPivot()
-	local margin = 4
-	local x = (math.random() * 2 - 1) * (baseSize.X/2 - margin)
-	local z = (math.random() * 2 - 1) * (baseSize.Z/2 - margin)
-
-	-- Y: stand on top of SpawnPoint if present, else above pivot
-	local sp = base:FindFirstChild("SpawnPoint")
-	local groundY
-	if sp and sp:IsA("BasePart") then
-		groundY = sp.Position.Y + sp.Size.Y/2
-	else
-		groundY = cf.Position.Y + 1
-	end
-
-	local _, brSize = model:GetBoundingBox()
-	local worldY = groundY + brSize.Y/2 + 0.1
-
-	return CFrame.new(cf.Position.X + x, worldY, cf.Position.Z + z)
-		* CFrame.Angles(0, math.rad(math.random(0, 359)), 0)
-end
-
-------------------------------------------------------------------------
--- Place a brainrot on a base
-------------------------------------------------------------------------
-
-local function tryPlace(player, base)
-	if BrainrotState.count(player) == 0 then return end
-	if placedCount(base) >= getCapacity(base) then return end
-
-	local entry = BrainrotState.popTop(player)
-	if not entry then return end
-
-	local model = entry.model
-	if not model or not model.Parent then
-		if entry.anchor then entry.anchor:Destroy() end
-		return
-	end
-
-	-- Anchor parts and disable collision (so player walks through)
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			p.CanCollide = false
-			p.Massless = false
+	-- Рехидратированные брейнроты приходят без SlotIndex (SaveService сохраняет cframe, не slot).
+	-- Назначаем младший свободный — порядок rehydration сохраняет исходный порядок размещения.
+	-- И сразу репозиционируем в сетку: сохранённая CFrame могла быть из buggy random-формулы
+	-- (или с pivot-vs-bbox смещением шаблона), оставлять её = брейнрот висит вне базы.
+	if not model:GetAttribute("SlotIndex") then
+		local idx = BaseSlots.findFreeSlot(base, PlayerData.getPlaced(player))
+		if idx then
+			model:SetAttribute("SlotIndex", idx)
+			model:PivotTo(BaseSlots.slotPositionInBase(base, model, idx))
 		end
 	end
-
-	-- Disable prompts (placed brainrots are stationary, can't be re-picked up)
-	for _, d in model:GetDescendants() do
-		if d:IsA("ProximityPrompt") then d.Enabled = false end
-	end
-
-	-- Remove head anchor weld
-	if entry.anchor then entry.anchor:Destroy() end
-
-	-- Tag and stash metadata
-	CollectionService:RemoveTag(model, "Brainrot")
-	CollectionService:AddTag(model, PLACED_TAG)
-	model:SetAttribute("PlacedOnBase", base.Name)
-	model:SetAttribute("PlacedBy", player.Name)
-
-	model.Parent = base
-	model:PivotTo(randomPositionInBase(base, model))
-
-	placed[base] = placed[base] or {}
-	table.insert(placed[base], model)
-
-	print(("[BrainrotDelivery] %s placed %s on %s (%d/%d, +%d/sec) @ %s"):format(
-		player.Name, model.Name, base.Name,
-		#placed[base], getCapacity(base),
-		BrainrotConfig.getIncome(model:GetAttribute("Rarity")),
-		Util.locationOf(player)
+	PlayerData.addPlacedIfNew(player, model)
+	print(("[BrainrotDelivery] registered placed %s on %s slot %s (%d/%d)"):format(
+		model.Name, base.Name, tostring(model:GetAttribute("SlotIndex")),
+		#PlayerData.getPlaced(player), BaseSlots.getCapacity(base)
 	))
-	evtPlaced:Fire(model, base, player)
 end
 
-------------------------------------------------------------------------
--- Touched setup per base
-------------------------------------------------------------------------
-
-local function bindBase(base)
-	placed[base] = placed[base] or {}
-
-	local function bindPart(p)
-		if not p:IsA("BasePart") then return end
-		-- Skip placed brainrots' own parts (already filtered by ownership but cheap to skip)
-		if CollectionService:HasTag(p:FindFirstAncestorOfClass("Model") or p, PLACED_TAG) then return end
-
-		p.Touched:Connect(function(hit)
-			local char = hit:FindFirstAncestorOfClass("Model")
-			if not char then return end
-			if not char:FindFirstChildOfClass("Humanoid") then return end
-			local player = Players:GetPlayerFromCharacter(char)
-			if not player then return end
-
-			-- Owner check: only base's owner triggers delivery
-			if getOwnerPlayer(base) ~= player then return end
-
-			-- Debounce per player
-			local now = os.clock()
-			local last = lastDelivery[player]
-			if last and now - last < DELIVERY_DEBOUNCE then return end
-			lastDelivery[player] = now
-
-			tryPlace(player, base)
-		end)
-	end
-
-	for _, p in base:GetDescendants() do bindPart(p) end
-	base.DescendantAdded:Connect(bindPart)
+for _, m in CollectionService:GetTagged(PLACED_TAG) do
+	tryRegisterPlaced(m)
 end
-
-for _, name in BASE_NAMES do
-	local base = workspace:FindFirstChild(name)
-	if base then
-		bindBase(base)
-		print("[BrainrotDelivery] bound " .. name)
-	else
-		warn("[BrainrotDelivery] base not found: " .. name)
-	end
-end
+CollectionService:GetInstanceAddedSignal(PLACED_TAG):Connect(tryRegisterPlaced)
 
 ------------------------------------------------------------------------
 -- Income tick: every second, sum income across each player's base
@@ -247,59 +103,26 @@ task.spawn(function()
 	while true do
 		task.wait(1)
 		for _, player in Players:GetPlayers() do
-			-- Belt-and-suspenders: ensure leaderstats.Coins exists before each tick
-			-- (other scripts may have created leaderstats Folder without Coins).
-			setupLeaderstats(player)
-			local ls = player:FindFirstChild("leaderstats")
-			local coins = ls and ls:FindFirstChild("Coins")
-			if not coins then
-				print(("[BrainrotDelivery DEBUG] %s no leaderstats.Coins"):format(player.Name))
-				continue
-			end
-
+			PlayerData.prunePlaced(player)
+			local list = PlayerData.getPlaced(player)
 			local income = 0
-			local debugInfo = {}
-			for _, baseName in BASE_NAMES do
-				local base = workspace:FindFirstChild(baseName)
-				if not base then
-					table.insert(debugInfo, baseName .. ":missing")
-					continue
-				end
-				local owner = base:GetAttribute("Owner")
-				if owner ~= player.Name then
-					table.insert(debugInfo, ("%s:owner=%s"):format(baseName, tostring(owner)))
-					continue
-				end
-				local list = placed[base] or {}
-				table.insert(debugInfo, ("%s:owned,list=%d"):format(baseName, #list))
-				for _, m in list do
-					if m and m.Parent == base then
-						local brIncome = BrainrotConfig.getIncome(m:GetAttribute("Rarity"))
-						income += brIncome
-						task.spawn(showIncomeFloat, m, brIncome)
-					end
+			for _, m in list do
+				local base = m.Parent
+				if base then
+					local vipMul = base:GetAttribute("Vip") and 2 or 1
+					local brIncome = BrainrotConfig.getIncome(m) * vipMul
+					income += brIncome
+					task.spawn(showIncomeFloat, m, brIncome)
 				end
 			end
 			if income > 0 then
-				coins.Value = coins.Value + income
-				print(("[BrainrotDelivery] %s +%d coins/sec (total: %d)"):format(
-					player.Name, income, coins.Value
-				))
-			else
-				print(("[BrainrotDelivery DEBUG] %s tick income=0 | %s"):format(
-					player.Name, table.concat(debugInfo, " | ")
+				PlayerData.addCoins(player, income)
+				print(("[BrainrotDelivery] %s +%d coins/sec (total: %d, placed=%d)"):format(
+					player.Name, income, PlayerData.getCoins(player), #list
 				))
 			end
 		end
 	end
-end)
-
-------------------------------------------------------------------------
--- Cleanup on player leave
-------------------------------------------------------------------------
-
-Players.PlayerRemoving:Connect(function(player)
-	lastDelivery[player] = nil
 end)
 
 print("[BrainrotDelivery] ready")

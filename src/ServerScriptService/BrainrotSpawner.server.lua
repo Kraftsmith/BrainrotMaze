@@ -5,8 +5,9 @@
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 
+local BrainrotLifecycle = require(ServerStorage:WaitForChild("BrainrotLifecycle"))
+
 local SPAWN_TAG     = "BrainrotSpawnPad"
-local BRAINROT_TAG  = "Brainrot"
 local MIN_INTERVAL  = 30
 local MAX_INTERVAL  = 90
 
@@ -73,17 +74,26 @@ local function spawnAtPad(pad)
 		if d:IsA("ProximityPrompt") then d.Enabled = true end
 	end
 
-	-- Place above pad
+	-- Place above pad. Two-pass placement: импортированные меши часто имеют pivot не в центре
+	-- bounding box (обычно у "ног" или origin'а первой импортированной part), поэтому позиционировать
+	-- по pivot.Y нельзя — модель повиснет в воздухе. Сначала ставим pivot над платформой с нужной
+	-- ротацией, затем измеряем фактический низ bbox и подравниваем по нему.
 	clone.Parent = workspace
-	local _, brSize = clone:GetBoundingBox()
-	local y = pad.Position.Y + pad.Size.Y/2 + brSize.Y/2 + 0.1
+	local padTopY = pad.Position.Y + pad.Size.Y/2
 	clone:PivotTo(
-		CFrame.new(pad.Position.X, y, pad.Position.Z)
+		CFrame.new(pad.Position.X, padTopY, pad.Position.Z)
 		* CFrame.Angles(0, math.rad(math.random(0, 359)), 0)
 	)
+	local bbCF, bbSize = clone:GetBoundingBox()
+	local actualBottomY = bbCF.Position.Y - bbSize.Y/2
+	local dy = (padTopY + 0.1) - actualBottomY
+	clone:PivotTo(clone:GetPivot() + Vector3.new(0, dy, 0))
 
-	-- Tag (this triggers BrainrotPickup's bindModel via GetInstanceAddedSignal)
-	CollectionService:AddTag(clone, BRAINROT_TAG)
+	-- Lifecycle: nil -> Spawned (sets Brainrot tag, which triggers BrainrotPickup's bindModel)
+	local ok, err = BrainrotLifecycle.transition(clone, BrainrotLifecycle.States.Spawned)
+	if not ok then
+		warn(("[BrainrotSpawner] failed to transition clone to Spawned: %s"):format(tostring(err)))
+	end
 
 	return clone
 end

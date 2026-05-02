@@ -25,7 +25,7 @@ label.BackgroundTransparency = 0.45
 label.TextColor3 = Color3.fromRGB(255, 255, 255)
 label.Font = Enum.Font.GothamBold
 label.TextSize = 18
-label.Text = "[E] Положить брейнрота"
+label.Text = "[E] Drop brainrot"
 label.Visible = false
 label.Parent = screenGui
 

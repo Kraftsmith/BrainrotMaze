@@ -88,6 +88,16 @@
 ### Phase D: Серверный скрипт ✅
 - [x] `ServerScriptService.MazeTrapsServer`: цикл `Period/ActiveDuration` с tier-множителем (`Period / (1 + (tier-2)*0.2)`), `CanTouch` на хитбоксе, Beam/ParticleEmitter/Spike-Transparency on/off, Touched → дебаунс 1.5с per-player → `TrapHit:Fire(player)` + Sound:Play.
 
+### Phase E: Новые типы ловушек — TODO
+
+Расширение TrapType-набора. Спека и timing для каждого типа — в [Labyrinths.md § 4.3–4.5](../Game%20Design/Labyrinths.md#4-ловушки). Эффект единый: `TrapHit` → drop carried brainrots. Различаются визуалом, циклом и триггером.
+
+- [ ] **`FloorDrop`** (T3+) — reactive trigger, не periodic. Игрок наступает → telegraph 0.4с → плитка `CanCollide=false` на `RestoreDelay`. Шаблон `ServerStorage.TrapTemplates.FloorDropTrap`. Атрибуты: `TrapType="FloorDrop"`, `WarmupDelay=0.4`, `RestoreDelay=2`. В `MazeTrapsServer` — отдельная ветка от periodic-цикла (по `TrapType`).
+- [ ] **`Anvil`** (T4+) — periodic, точка падения фиксированная. Telegraph = «тень» на полу за `WarmupDelay` до удара. Шаблон `AnvilTrap` с куб-Part + теневой Part (Transparency 0.5). Атрибуты: `TrapType="Anvil"`, `Period=4`, `WarmupDelay=0.5`, `DropHeight=30`, `LandingDelay=1`.
+- [ ] **`CrushingWalls`** (T5+) — periodic, две стены съезжаются. Шаблон `CrushingWallsTrap` (Model с двумя Part-стенами + Configuration anchor для исходных позиций). Атрибуты: `TrapType="CrushingWalls"`, `OpenWidth=8`, `ClosedGap=1`, `SqueezeDuration=1.2`, `HoldDuration=0.8`, `OpenDuration=2.5`, `ReleaseDuration=0.5`. `Touched` на hitbox-Parts стен фаерит `TrapHit` только в Hold-фазе (атрибут `Active=true` на самой trap-модели).
+
+**Архитектурный момент:** Phase E неизбежно потребует разделения `MazeTrapsServer` по `TrapType` — текущий monolithic-цикл хорошо ложится только на `Spikes`/`FireJet` (одна Active-фаза). Возможный рефакторинг — `TrapBehaviors` модуль с handler-таблицей `[TrapType] = {init = fn, tick = fn}`.
+
 ---
 
 ## Граничные случаи

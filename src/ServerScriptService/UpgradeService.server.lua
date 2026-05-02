@@ -17,21 +17,9 @@ if not purchaseEvent then
 	purchaseEvent.Parent = ReplicatedStorage
 end
 
-local BASE_NAMES = {"bazapl1", "bazapl2", "bazapl3", "bazapl4"}
-
 ------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
-
-local function findPlayerBase(player)
-	for _, name in BASE_NAMES do
-		local base = workspace:FindFirstChild(name)
-		if base and base:GetAttribute("Owner") == player.Name then
-			return base
-		end
-	end
-	return nil
-end
 
 local function applySpeed(player)
 	local char = player.Character
@@ -44,10 +32,10 @@ local function applySpeed(player)
 end
 
 local function applyBaseCapacity(player)
-	local base = findPlayerBase(player)
+	local base = PlayerData.getBase(player)
 	if not base then return end
 	local lvl = PlayerData.getValue(player, "baseLvl")
-	local cap = UpgradeConfig.getEffect("baseCap", lvl) or 4
+	local cap = UpgradeConfig.getEffect("baseCap", lvl) or 10
 	base:SetAttribute("Capacity", cap)
 end
 
@@ -70,34 +58,43 @@ end
 ------------------------------------------------------------------------
 
 local function tryUpgrade(player, track)
+	-- Гейт покупок до загрузки профиля (см. SaveService): защищает от трат на дефолтных коинах,
+	-- которые позже затёрлись бы загруженным профилем.
+	if not player:GetAttribute("ProfileLoaded") then
+		return false, "profile not loaded"
+	end
+
 	local key
 	if track == "speed" then key = "speedLvl"
 	elseif track == "carry" then key = "carryLvl"
 	elseif track == "baseCap" then key = "baseLvl"
 	else return false, "unknown track" end
 
-	local current = PlayerData.getValue(player, key)
-	local nextLvl = current + 1
-	if nextLvl > UpgradeConfig.getMaxLevel(track) then
-		return false, "max level"
-	end
-	local cost = UpgradeConfig.getCost(track, nextLvl)
+	local maxLvl = UpgradeConfig.getMaxLevel(track)
 
-	local ls = player:FindFirstChild("leaderstats")
-	local coins = ls and ls:FindFirstChild("Coins")
-	if not coins or coins.Value < cost then
-		return false, ("not enough coins (%d / %d)"):format(coins and coins.Value or 0, cost)
-	end
+	-- Атомарно: проверка лимита, баланса, списание + повышение уровня. Мутатор возвращает
+	-- (ok, nextLvl|errMsg, cost). Если ok=false — поля профиля не меняются (мы их не трогали).
+	local ok, resultOrErr, cost = PlayerData.update(player, function(p)
+		local nextLvl = p[key] + 1
+		if nextLvl > maxLvl then return false, "max level" end
+		local price = UpgradeConfig.getCost(track, nextLvl)
+		if p.coins < price then
+			return false, ("not enough coins (%d / %d)"):format(p.coins, price)
+		end
+		p.coins = p.coins - price
+		p[key] = nextLvl
+		return true, nextLvl, price
+	end)
 
-	coins.Value = coins.Value - cost
-	PlayerData.setValue(player, key, nextLvl)
+	if not ok then return false, resultOrErr end
+
 	applyAll(player)
 
-	local newValue = UpgradeConfig.getEffect(track, nextLvl)
+	local newValue = UpgradeConfig.getEffect(track, resultOrErr)
 	print(("[UpgradeService] %s bought %s lvl %d (value=%s, cost=%d)"):format(
-		player.Name, track, nextLvl, tostring(newValue), cost
+		player.Name, track, resultOrErr, tostring(newValue), cost
 	))
-	return true, nextLvl
+	return true, resultOrErr
 end
 
 ------------------------------------------------------------------------
@@ -121,7 +118,7 @@ local function setupPlayer(player)
 	-- Wait briefly for BaseManager to assign base, then apply capacity
 	task.spawn(function()
 		for _ = 1, 10 do
-			if findPlayerBase(player) then
+			if PlayerData.getBase(player) then
 				applyBaseCapacity(player)
 				return
 			end
@@ -134,6 +131,20 @@ end
 Players.PlayerAdded:Connect(setupPlayer)
 for _, p in Players:GetPlayers() do task.spawn(setupPlayer, p) end
 
+-- Re-apply effects when PlayerData changes (e.g., SaveService loaded profile, или /upgrade-команда).
+PlayerData.Changed:Connect(function(player, key)
+	if key == "speedLvl" then
+		applySpeed(player)
+		syncAttributes(player)
+	elseif key == "baseLvl" then
+		applyBaseCapacity(player)
+		syncAttributes(player)
+	elseif key == "carryLvl" then
+		-- carry эффект читается на каждом пикапе (BrainrotPickup), отдельный apply не нужен
+		syncAttributes(player)
+	end
+end)
+
 ------------------------------------------------------------------------
 -- Test chat commands (for use until Shop UI exists)
 ------------------------------------------------------------------------
@@ -143,7 +154,7 @@ local function bindChat(player)
 		local track = msg:match("^/upgrade%s+(%w+)")
 		if not track then return end
 		track = track:lower()
-		if track == "base" then track = "baseCap" end
+		if track == "base" or track == "basecap" then track = "baseCap" end
 		local ok, result = tryUpgrade(player, track)
 		if not ok then
 			print(("[UpgradeService] %s /upgrade %s FAILED: %s"):format(player.Name, track, tostring(result)))
@@ -161,7 +172,7 @@ for _, p in Players:GetPlayers() do bindChat(p) end
 purchaseEvent.OnServerEvent:Connect(function(player, track)
 	if type(track) ~= "string" then return end
 	track = track:lower()
-	if track == "base" then track = "baseCap" end
+	if track == "base" or track == "basecap" then track = "baseCap" end
 	if track ~= "speed" and track ~= "carry" and track ~= "baseCap" then return end
 	tryUpgrade(player, track)
 end)

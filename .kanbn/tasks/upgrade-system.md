@@ -10,7 +10,7 @@ started: 2026-04-27T16:00:00.000Z
 ## Что сделано
 
 - **`ServerStorage.PlayerData`** — in-memory per-player состояние (`speedLvl`, `carryLvl`, `baseLvl`). Future-ready под DataStore.
-- **`ServerStorage.UpgradeConfig`** — таблицы значений + цен из Economy.md (speed 1-10 / carry 1-8 / baseCap 1-8).
+- **`ServerStorage.UpgradeConfig`** — значения + цены из Economy.md: speed (статическая таблица 1-10), carry (статическая 1-8), baseCap (формула, без потолка — см. [Base.md](../../Game Design/Base.md)).
 - **`ServerScriptService.UpgradeService`** — на PlayerAdded/CharacterAdded применяет WalkSpeed и Capacity. Покупки через `tryUpgrade(player, track)`.
 - **`BrainrotPickup`** — `MAX_CARRY` больше не захардкожен, читается из `PlayerData.carryLvl` через `UpgradeConfig.getEffect("carry", lvl)` при каждом пикапе.
 - **Тест-команды в чате** (пока нет Shop UI): `/upgrade speed`, `/upgrade carry`, `/upgrade base`.
@@ -34,10 +34,10 @@ started: 2026-04-27T16:00:00.000Z
 2. Напиши `/upgrade speed` и Enter.
 3. **Должно произойти:**
    - Coins уменьшилось на 100.
-   - Персонаж побежал **заметно быстрее** (WalkSpeed 16→18).
-   - В Output: `[UpgradeService] MikhailSorokin bought speed lvl 2 (value=18, cost=100)`.
-4. Накопи ещё 300 → купи speed lvl 3 (WalkSpeed 20).
-5. Каждый следующий уровень = +2 скорости, дороже в ~2.5 раза.
+   - Персонаж побежал **заметно быстрее** (WalkSpeed 16→20).
+   - В Output: `[UpgradeService] MikhailSorokin bought speed lvl 2 (value=20, cost=100)`.
+4. Накопи ещё 300 → купи speed lvl 3 (WalkSpeed 24).
+5. Шаг скорости неравномерный: на ранних уровнях +4, ближе к топу +9–10. Цены растут в ~2.5–3.3 раза за уровень. Максимум — lvl 10 / WalkSpeed 70 за 600 000.
 
 ### Тест B: Вместимость переноски 📦
 
@@ -51,13 +51,14 @@ started: 2026-04-27T16:00:00.000Z
 
 ### Тест C: Вместимость базы 🏠
 
-1. На базе стартом помещается **4 брейнрота** (потом не размещаются).
+1. На базе стартом 1 этаж — помещается **10 брейнротов** (11-й не размещается).
 2. Накопи 500.
 3. Чат: `/upgrade base`.
 4. **Должно произойти:**
    - Coins -500.
-   - Теперь на базе помещается **6** брейнротов.
-5. Принеси 5-го и 6-го → размещаются. 7-го — нет.
+   - Появился второй этаж — суммарно помещается **20** брейнротов.
+5. Принеси 11-го → размещается на 2-м этаже. До 20-го — размещаются. 21-го — нет.
+6. Покупка не имеет потолка: каждый следующий апгрейд = +1 этаж = +10 слотов.
 
 ### Тест D: Защиты
 

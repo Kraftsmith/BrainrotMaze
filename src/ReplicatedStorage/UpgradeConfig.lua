@@ -1,21 +1,21 @@
--- UpgradeConfig (ModuleScript in ServerStorage)
+-- UpgradeConfig (ModuleScript in ReplicatedStorage)
 -- Static tables for upgrade tracks: level → effect value + cost.
--- Numbers from Game Design/Economy.md.
+-- Numbers from Game Design/Economy.md and Game Design/Base.md.
 
 local UpgradeConfig = {}
 
--- Speed (lvl 1–10): 16 → 35 WalkSpeed
+-- Speed (lvl 1–10): 16 → 70 WalkSpeed
 UpgradeConfig.speed = {
 	[1]  = {value = 16, cost = 0},
-	[2]  = {value = 18, cost = 100},
-	[3]  = {value = 20, cost = 300},
-	[4]  = {value = 22, cost = 800},
-	[5]  = {value = 24, cost = 2000},
-	[6]  = {value = 26, cost = 5000},
-	[7]  = {value = 28, cost = 12000},
-	[8]  = {value = 30, cost = 30000},
-	[9]  = {value = 32, cost = 75000},
-	[10] = {value = 35, cost = 200000},
+	[2]  = {value = 20, cost = 100},
+	[3]  = {value = 24, cost = 300},
+	[4]  = {value = 28, cost = 800},
+	[5]  = {value = 33, cost = 2500},
+	[6]  = {value = 38, cost = 7000},
+	[7]  = {value = 44, cost = 20000},
+	[8]  = {value = 51, cost = 60000},
+	[9]  = {value = 60, cost = 200000},
+	[10] = {value = 70, cost = 600000},
 }
 
 -- Carry capacity (lvl 1–8): how many brainrots stacked on head at once
@@ -30,17 +30,13 @@ UpgradeConfig.carry = {
 	[8] = {value = 8, cost = 500000},
 }
 
--- Base capacity (lvl 1–8): how many brainrots placed simultaneously on base
-UpgradeConfig.baseCap = {
-	[1] = {value = 4,  cost = 0},
-	[2] = {value = 6,  cost = 500},
-	[3] = {value = 8,  cost = 2000},
-	[4] = {value = 12, cost = 8000},
-	[5] = {value = 16, cost = 30000},
-	[6] = {value = 24, cost = 100000},
-	[7] = {value = 32, cost = 400000},
-	[8] = {value = 48, cost = 1500000},
-}
+-- Base capacity (lvl 1–21): per-slot purchases.
+-- Lvl 1 = 10 slots (старт). Каждый следующий уровень = +1 слот по 500 монет, до 30 слотов (lvl 21).
+-- Визуальный своп моделей по диапазонам Capacity (10 / 11..20 / 21..30) — в BaseSwap.server.lua (`ceil(cap/10)`).
+UpgradeConfig.baseCap = {[1] = {value = 10, cost = 0}}
+for lvl = 2, 21 do
+	UpgradeConfig.baseCap[lvl] = {value = 9 + lvl, cost = 500}
+end
 
 function UpgradeConfig.getMaxLevel(track)
 	local t = UpgradeConfig[track]
